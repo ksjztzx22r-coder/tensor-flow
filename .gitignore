@@ -216,4 +216,28 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
->>>>>>> 9f99acec4c0bde1fe108eb652eb03090b8aa0737
+
+# Project specific ignores
+Projects.rar
+*.rar
+*.zip
+*.7z
+*.tar.gz
+
+# Virtual environments
+tf214_export/
+.venv/
+venv/
+env/
+
+# Datasets
+dataset/
+datasets/
+Dataset_raw/
+
+# Training logs and runs
+logs/
+
+# IDE
+.vscode/
+
