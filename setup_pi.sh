@@ -32,10 +32,12 @@ sudo apt install -y \
     python3-dev \
     libatlas-base-dev \
     libopenjp2-7 \
-    libtiff5 \
     libgl1-mesa-glx \
     pulseaudio \
     alsa-utils
+
+# Handle libtiff across Debian versions (libtiff6 on Bookworm, libtiff5 on Bullseye)
+sudo apt install -y libtiff6 || sudo apt install -y libtiff5 || sudo apt install -y libtiff-dev || true
 
 # Install picamera2 if supported on this Debian release
 echo -e "${GREEN}[2/6] Checking Picamera2 package availability...${NC}"
