@@ -1,134 +1,122 @@
+"""
+Main State Machine for Wildlife Intrusion Detection & Deterrence.
+Architecture: Option A (PIR Trigger -> Still Capture -> TFLite -> Deterrence -> Cooldown).
+Runs 100% offline on Raspberry Pi 3B+.
+"""
+
 import time
-import cv2
+import sys
 
-from camera import get_frame, close_camera
-from detector import classify
-from audio import play_audio, audio_busy
-from logger import log_detection
-from Rasp_Pi.raspi_config import *
+from src.Rasp_Pi.raspi_config import (
+    PIR_COOLDOWN_SECONDS,
+    CONFIDENCE_THRESHOLD,
+)
+from src.Rasp_Pi.gpio_setup import initialize as initialize_gpio, cleanup as cleanup_gpio
+from src.Rasp_Pi.pir_sensor import (
+    initialize_pir,
+    wait_for_pir_motion,
+    wait_for_pir_clear,
+    cleanup_pir,
+)
+from src.Rasp_Pi.camera import initialize_camera, capture_still, close_camera
+from src.Rasp_Pi.detector import initialize_detector, classify
+from src.Rasp_Pi.audio import play_audio, stop_audio, audio_busy
+from src.Rasp_Pi.logger import log_detection
 
-# ==========================================================
-# Detection Control
-# ==========================================================
 
-LAST_LABEL = "background"
+def run_system():
+    print("=" * 65)
+    print("  WILDLIFE INTRUSION DETECTION & ACOUSTIC DETERRENCE SYSTEM")
+    print("  Mode: PIR-Triggered On-Demand Still Capture (Option A)")
+    print("  Target Classes: Elephant, Wild Boar, Monkey, Background")
+    print("=" * 65)
 
-LAST_TRIGGER = 0
+    # 1. Initialize Subsystems (Loaded once at startup)
+    print("[INIT] Initializing GPIO...")
+    initialize_gpio()
 
-TRIGGER_COOLDOWN = 8
+    print("[INIT] Loading TensorFlow Lite interpreter...")
+    initialize_detector()
 
-# ==========================================================
-# Main Loop
-# ==========================================================
+    print("[INIT] Initializing camera...")
+    initialize_camera()
 
-def main():
+    print("[INIT] Initializing PIR motion sensor...")
+    initialize_pir()
 
-    global LAST_LABEL
-    global LAST_TRIGGER
+    print("=" * 65)
+    print("[SYSTEM READY] Standing by for PIR motion triggers...")
+    print("Press Ctrl+C to stop system safely.")
+    print("=" * 65)
 
-    print("=" * 60)
-    print("Wildlife Detection System Started")
-    print("Press 'Q' to Exit")
-    print("=" * 60)
+    try:
+        while True:
+            # 2. Wait for PIR LOW -> HIGH motion event
+            trigger_time = wait_for_pir_motion()
+            print(f"\n[MOTION] Trigger detected at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(trigger_time))}")
 
-    while True:
+            # Optional brief settling delay (100ms) for camera sensor auto-exposure
+            time.sleep(0.1)
 
-        frame = get_frame()
+            # 3. Capture one still photograph
+            t_cap_start = time.time()
+            frame_rgb = capture_still()
+            if frame_rgb is None:
+                print("[ERROR] Failed to capture photograph from camera. Continuing standby.")
+                continue
 
-        if frame is None:
-            continue
+            # 4. Run local TFLite classification
+            t_infer_start = time.time()
+            result = classify(frame_rgb)
+            inference_ms = (time.time() - t_infer_start) * 1000.0
 
-        result = classify(frame)
+            label = result["label"]
+            confidence = result["confidence"]
+            action = "none"
 
-        label = result["label"]
+            print(f"[PREDICTION] {label.upper()} | Confidence: {confidence*100:.2f}% | Latency: {inference_ms:.1f}ms")
 
-        confidence = result["confidence"]
-
-        current_time = time.time()
-
-        if (
-
-            label != "background"
-
-            and confidence >= CONFIDENCE_THRESHOLD
-
-        ):
-
-            if (
-
-                label != LAST_LABEL
-
-                or current_time - LAST_TRIGGER > TRIGGER_COOLDOWN
-
-            ):
-
+            # 5. Acoustic Deterrence Decision
+            if label in ["elephant", "wildboar", "monkey"] and confidence >= CONFIDENCE_THRESHOLD:
+                action = f"deterrent_played_{label}"
                 if not audio_busy():
                     play_audio(label)
+                else:
+                    print("[AUDIO] Audio channel busy; skipping overlapping trigger.")
+            elif label == "background":
+                action = "ignored_background"
+                print("[DECISION] Non-target background image; no audio deterrent.")
+            else:
+                action = "uncertain_low_confidence"
+                print(f"[DECISION] Confidence below threshold ({CONFIDENCE_THRESHOLD*100:.0f}%); no audio deterrent.")
 
-                log_detection(
+            # 6. Log Event & Save Image
+            log_detection(
+                label=label,
+                confidence=confidence,
+                action=action,
+                inference_time_ms=inference_ms,
+                frame_rgb=frame_rgb,
+            )
 
-                    label,
+            # 7. Wait for PIR to clear and apply cooldown
+            print(f"[COOLDOWN] Waiting for motion to clear and applying {PIR_COOLDOWN_SECONDS}s cooldown...")
+            wait_for_pir_clear()
+            time.sleep(PIR_COOLDOWN_SECONDS)
 
-                    confidence,
+            print("[STANDBY] Re-armed. Waiting for next motion event...")
 
-                    frame
+    except KeyboardInterrupt:
+        print("\n[SHUTDOWN] Keyboard interrupt received. Exiting safely...")
 
-                )
+    finally:
+        # Graceful hardware teardown
+        stop_audio()
+        close_camera()
+        cleanup_pir()
+        cleanup_gpio()
+        print("[SHUTDOWN] All resources released cleanly. Goodbye.")
 
-                LAST_LABEL = label
-
-                LAST_TRIGGER = current_time
-
-        text = f"{label} : {confidence:.2f}"
-
-        color = (0, 255, 0)
-
-        if label == "background":
-
-            color = (0, 255, 255)
-
-        cv2.putText(
-
-            frame,
-
-            text,
-
-            (15, 35),
-
-            cv2.FONT_HERSHEY_SIMPLEX,
-
-            1,
-
-            color,
-
-            2
-
-        )
-
-        cv2.imshow(
-
-            "Wildlife Detector",
-
-            frame
-
-        )
-
-        key = cv2.waitKey(1) & 0xFF
-
-        if key == ord("q"):
-
-            break
-
-    close_camera()
-
-    cv2.destroyAllWindows()
-
-    print("System Stopped.")
-
-# ==========================================================
-# Entry Point
-# ==========================================================
 
 if __name__ == "__main__":
-
-    main()
+    run_system()

@@ -1,0 +1,7 @@
+# Minimal Python dependencies for Raspberry Pi 3B+ Edge Deployment
+# (Note: picamera2 and RPi.GPIO are pre-installed on Raspberry Pi OS Bookworm)
+
+tflite-runtime>=2.14.0
+opencv-python-headless>=4.8.0
+pygame>=2.5.0
+numpy>=1.24.0

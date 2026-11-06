@@ -37,13 +37,13 @@ NUM_CLASSES = 4
 
 CLASS_NAMES = [
 
-    "elephant",
+    "background",
 
-    "wildboar",
+    "elephant",
 
     "monkey",
 
-    "background"
+    "wildboar"
 
 ]
 
@@ -97,12 +97,12 @@ ENABLE_QUANTIZATION = True
 
 LABELS = {
 
-    0: "elephant",
+    0: "background",
 
-    1: "wildboar",
+    1: "elephant",
 
     2: "monkey",
 
-    3: "background"
+    3: "wildboar"
 
 }

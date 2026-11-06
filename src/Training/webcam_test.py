@@ -7,7 +7,7 @@ from pathlib import Path
 print("Loading Wildlife Recognition Model...", flush=True)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_PATH = PROJECT_ROOT / "models" / "best_model.keras"
+MODEL_PATH = PROJECT_ROOT / "models" / "wildlife.keras"
 
 IMAGE_SIZE = (96, 96)
 CLASS_NAMES = ["background", "elephant", "monkey", "wildboar"]
@@ -34,7 +34,9 @@ try:
 
         image = cv2.resize(frame, IMAGE_SIZE)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = image.astype(np.float32) / 255.0
+        # Note: MobileNetV3 preprocess_input is baked into the model architecture expecting [0, 255] float32.
+        # Do not divide by 255.0 here to avoid double normalization.
+        image = image.astype(np.float32)
         image = np.expand_dims(image, axis=0)
 
         predictions = model.predict(image, verbose=0)[0]

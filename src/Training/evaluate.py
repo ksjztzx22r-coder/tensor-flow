@@ -8,7 +8,7 @@ model = tf.keras.models.load_model(MODEL_PATH)
 
 _, val_ds = load_dataset()
 
-loss, accuracy, precision, recall = model.evaluate(
+loss, accuracy = model.evaluate(
 
     val_ds,
 
