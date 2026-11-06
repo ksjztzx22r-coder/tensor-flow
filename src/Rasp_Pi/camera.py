@@ -33,17 +33,30 @@ class CameraInterface:
 
         if self.backend == "picamera2" and PICAMERA2_AVAILABLE:
             try:
-                print("[CAMERA] Initializing Picamera2...")
+                print("[CAMERA] Initializing Picamera2 with automatic white balance & exposure...")
                 self.picam2 = Picamera2()
+
                 config = self.picam2.create_still_configuration(
                     main={"size": (CAMERA_WIDTH, CAMERA_HEIGHT), "format": "RGB888"}
                 )
                 self.picam2.configure(config)
+
+                # Set standard Auto White Balance (AeEnable & AwbEnable)
+                try:
+                    self.picam2.set_controls({
+                        "AwbEnable": True,
+                        "AeEnable": True,
+                        "AwbMode": 0  # 0 is Auto AWB
+                    })
+                except Exception:
+                    pass
+
                 self.picam2.start()
-                # Sensor warm-up time
-                time.sleep(1.5)
+                # Crucial: Allow 2 seconds for Auto Exposure & White Balance to converge on natural room lighting
+                print("[CAMERA] Waiting 2s for sensor Auto Exposure & White Balance to converge...")
+                time.sleep(2.0)
                 self.is_opened = True
-                print("[CAMERA] Picamera2 initialized successfully.")
+                print("[CAMERA] Picamera2 ready with natural color tuning.")
                 return
             except Exception as e:
                 print(f"[CAMERA WARNING] Picamera2 init failed ({e}). Falling back to OpenCV.")
