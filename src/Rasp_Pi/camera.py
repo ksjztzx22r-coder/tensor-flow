@@ -15,7 +15,8 @@ PICAMERA2_AVAILABLE = False
 try:
     from picamera2 import Picamera2
     PICAMERA2_AVAILABLE = True
-except ImportError:
+except (ImportError, ValueError, Exception) as e:
+    print(f"[CAMERA NOTE] Picamera2 not usable ({e}). Will use OpenCV fallback.")
     PICAMERA2_AVAILABLE = False
 
 
