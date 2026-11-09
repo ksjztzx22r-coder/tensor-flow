@@ -49,8 +49,8 @@ LABELS = {
 # ==========================================================
 
 PIR_PIN = 17               # BCM GPIO17 (Physical Pin 11)
-PIR_WARMUP_SECONDS = 30     # Stabilisation duration after power up (30 - 60s)
-PIR_COOLDOWN_SECONDS = 8   # Settling cooldown after trigger before re-arming
+PIR_WARMUP_SECONDS = 15     # Stabilisation duration after power up
+PIR_COOLDOWN_SECONDS = 5   # Re-arm and return to idle after 5 seconds
 
 # ==========================================================
 # Audio Deterrence

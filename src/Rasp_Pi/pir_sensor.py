@@ -47,32 +47,27 @@ class PIRSensor:
 
     def wait_for_motion(self, poll_interval=0.1):
         """
-        Polls until a LOW -> HIGH edge transition occurs.
+        Polls until motion is detected (pin is HIGH).
         Returns timestamp of the trigger event.
         """
         if not self.initialized:
             self.initialize()
 
-        # Wait until current pin state is LOW (in case of ongoing trigger)
-        while self.read():
-            time.sleep(poll_interval)
-
-        # Wait for LOW -> HIGH transition
+        # Wait until pin reads HIGH
         while not self.read():
             time.sleep(poll_interval)
 
         return time.time()
 
-    def wait_for_clear(self, timeout=30.0, poll_interval=0.2):
+    def wait_for_clear(self, timeout=PIR_COOLDOWN_SECONDS, poll_interval=0.2):
         """
-        Waits for PIR pin to return LOW before re-arming.
+        Applies a strict cooldown (default 5.0 seconds).
+        Does not hang if the hardware pin takes longer to clear.
         """
         start = time.time()
-        while self.read():
+        while time.time() - start < timeout:
             time.sleep(poll_interval)
-            if time.time() - start > timeout:
-                print("[PIR WARNING] Motion signal remained HIGH beyond timeout.")
-                break
+
 
     def cleanup(self):
         """Cleans up GPIO settings."""

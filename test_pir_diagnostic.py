@@ -61,12 +61,10 @@ try:
             if val == 1:
                 trigger_count += 1
                 high_start_time = time.time()
-                print(f"[{current_time}] >>> MOTION DETECTED! (State: 1 | Trigger #{trigger_count}) <<<")
-            else:
-                duration = 0.0
-                if high_start_time:
-                    duration = time.time() - high_start_time
-                print(f"[{current_time}] --- Motion Cleared (State: 0 | Signal stayed HIGH for {duration:.1f}s) ---")
+                print(f"\n[{current_time}] >>> MOTION DETECTED! (Trigger #{trigger_count}) <<<")
+                print(f"[{current_time}] Holding for 5s cooldown before re-arming...")
+                time.sleep(5.0)
+                print(f"[{current_time}] --- Re-armed & Idle (Ready for next motion) ---")
             last_val = val
 
         # Print live status bar on the same line
