@@ -45,12 +45,15 @@ LABELS = {
 }
 
 # ==========================================================
-# PIR Sensor (HC-SR501)
+# PIR Sensor (HC-SR501) with Hysteresis
 # ==========================================================
 
-PIR_PIN = 17               # BCM GPIO17 (Physical Pin 11)
-PIR_WARMUP_SECONDS = 15     # Stabilisation duration after power up
-PIR_COOLDOWN_SECONDS = 5   # Re-arm and return to idle after 5 seconds
+PIR_PIN = 17                        # BCM GPIO17 (Physical Pin 11)
+PIR_WARMUP_SECONDS = 15             # Stabilisation duration after power up
+PIR_QUIET_SECONDS = 3.0             # Continuous silence required to return to IDLE
+PIR_CONTINUOUS_MAX_SECONDS = 5.0    # Seconds of continuous detection before entering ignore mode
+PIR_IGNORE_INTERVAL_SECONDS = 15.0  # Seconds to ignore/suppress PIR after continuous detection
+PIR_COOLDOWN_SECONDS = 5.0          # Fallback general cooldown
 
 # ==========================================================
 # Audio Deterrence

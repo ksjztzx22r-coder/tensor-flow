@@ -99,11 +99,8 @@ def run_system():
                 frame_rgb=frame_rgb,
             )
 
-            # 7. Apply strict 5-second cooldown and return to idle
-            print(f"[COOLDOWN] Applying {PIR_COOLDOWN_SECONDS}s cooldown...")
-            time.sleep(PIR_COOLDOWN_SECONDS)
-
-            print("[STANDBY] Re-armed. Waiting for next motion event...")
+            # 7. Hysteresis sensing loop (handles quiet reset and continuous motion suppression)
+            wait_for_pir_clear()
 
     except KeyboardInterrupt:
         print("\n[SHUTDOWN] Keyboard interrupt received. Exiting safely...")

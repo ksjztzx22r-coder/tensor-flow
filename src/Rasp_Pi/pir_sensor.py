@@ -1,6 +1,9 @@
 """
 PIR Motion Sensor interface for HC-SR501 on Raspberry Pi 3B+.
-Monitors BCM GPIO17 for motion triggers with continuous Trigger <-> No Trigger state cycling.
+Implements a hysteresis sensing loop:
+- Quick pass: returns to IDLE after a short quiet period (PIR_QUIET_SECONDS).
+- Continuous detection: if motion is detected continuously beyond PIR_CONTINUOUS_MAX_SECONDS,
+  the PIR is completely ignored for PIR_IGNORE_INTERVAL_SECONDS before re-arming.
 """
 
 import time
@@ -17,14 +20,29 @@ try:
 except ImportError:
     RPI_GPIO_AVAILABLE = False
 
-from src.Rasp_Pi.raspi_config import PIR_PIN, PIR_WARMUP_SECONDS, PIR_COOLDOWN_SECONDS
+from src.Rasp_Pi.raspi_config import (
+    PIR_PIN,
+    PIR_WARMUP_SECONDS,
+    PIR_QUIET_SECONDS,
+    PIR_CONTINUOUS_MAX_SECONDS,
+    PIR_IGNORE_INTERVAL_SECONDS,
+)
 
 
 class PIRSensor:
-    def __init__(self, pin=PIR_PIN, warmup_seconds=PIR_WARMUP_SECONDS, timeout_seconds=PIR_COOLDOWN_SECONDS):
+    def __init__(
+        self,
+        pin=PIR_PIN,
+        warmup_seconds=PIR_WARMUP_SECONDS,
+        quiet_seconds=PIR_QUIET_SECONDS,
+        continuous_max=PIR_CONTINUOUS_MAX_SECONDS,
+        ignore_interval=PIR_IGNORE_INTERVAL_SECONDS,
+    ):
         self.pin = pin
         self.warmup_seconds = warmup_seconds
-        self.timeout_seconds = timeout_seconds
+        self.quiet_seconds = quiet_seconds
+        self.continuous_max = continuous_max
+        self.ignore_interval = ignore_interval
         self.device = None
         self.initialized = False
 
@@ -75,20 +93,57 @@ class PIRSensor:
 
         return time.time()
 
-    def wait_for_clear(self, timeout=None, poll_interval=0.2):
+    def wait_for_clear(self, poll_interval=0.2):
         """
-        Waits until there has been no motion for timeout_seconds.
+        Hysteresis loop after a trigger event:
+        1. If pin goes LOW and stays LOW for quiet_seconds -> Clean reset to IDLE.
+        2. If pin stays HIGH continuously for continuous_max -> Hysteresis activates,
+           PIR is ignored for ignore_interval seconds, then re-arms once sensor drops to LOW.
         """
-        if timeout is None:
-            timeout = self.timeout_seconds
+        start_tracking = time.time()
+        last_high = time.time() if self.read() else None
 
-        last_motion = time.time()
         while True:
-            if self.read():
-                last_motion = time.time()
-            elif time.time() - last_motion >= timeout:
-                break
+            is_high = self.read()
+            now = time.time()
+
+            if is_high:
+                last_high = now
+                continuous_duration = now - start_tracking
+
+                # Continuous detection threshold exceeded!
+                if continuous_duration >= self.continuous_max:
+                    print(
+                        f"\n[HYSTERESIS] Continuous motion detected (> {self.continuous_max:.1f}s)! "
+                        f"PIR will be IGNORED for {self.ignore_interval:.1f}s..."
+                    )
+                    time.sleep(self.ignore_interval)
+
+                    # After ignore interval, ensure pin drops to LOW before re-arming
+                    print("[HYSTERESIS] Ignore interval ended. Waiting for sensor to clear to LOW...")
+                    low_wait_start = time.time()
+                    while self.read():
+                        time.sleep(poll_interval)
+                        # Safety fallback: don't block indefinitely if hardware pin is stuck
+                        if time.time() - low_wait_start > 30.0:
+                            print("[HYSTERESIS WARNING] Sensor pin remained HIGH; forcing re-arm.")
+                            break
+                    break
+            else:
+                # Pin is LOW (quiet)
+                if last_high is None:
+                    # Never went high during this check, wait for quiet_seconds
+                    time.sleep(self.quiet_seconds)
+                    break
+                else:
+                    quiet_time = now - last_high
+                    if quiet_time >= self.quiet_seconds:
+                        # Clean quiet reset
+                        break
+
             time.sleep(poll_interval)
+
+        print("[STANDBY] PIR re-armed and ready for next motion event.")
 
     def cleanup(self):
         """Cleans up GPIO settings."""
