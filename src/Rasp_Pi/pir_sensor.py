@@ -1,9 +1,15 @@
 """
 PIR Motion Sensor interface for HC-SR501 on Raspberry Pi 3B+.
-Monitors BCM GPIO17 for motion triggers with warmup and clean shutdown.
+Monitors BCM GPIO17 for motion triggers with continuous Trigger <-> No Trigger state cycling.
 """
 
 import time
+
+try:
+    from gpiozero import DigitalInputDevice
+    GPIO_BACKEND = "gpiozero"
+except ImportError:
+    GPIO_BACKEND = "RPi.GPIO"
 
 try:
     import RPi.GPIO as GPIO
@@ -15,67 +21,90 @@ from src.Rasp_Pi.raspi_config import PIR_PIN, PIR_WARMUP_SECONDS, PIR_COOLDOWN_S
 
 
 class PIRSensor:
-    def __init__(self, pin=PIR_PIN, warmup_seconds=PIR_WARMUP_SECONDS):
+    def __init__(self, pin=PIR_PIN, warmup_seconds=PIR_WARMUP_SECONDS, timeout_seconds=PIR_COOLDOWN_SECONDS):
         self.pin = pin
         self.warmup_seconds = warmup_seconds
+        self.timeout_seconds = timeout_seconds
+        self.device = None
         self.initialized = False
 
     def initialize(self):
         """Initializes the GPIO pin and performs sensor warmup stabilization."""
-        if not RPI_GPIO_AVAILABLE:
-            print("[PIR MOCK] RPi.GPIO not available (running in simulation/host mode).")
-            self.initialized = True
+        if self.initialized:
             return
 
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
         print(f"[PIR] Sensor on BCM GPIO{self.pin} initializing...")
-        print(f"[PIR] Waiting {self.warmup_seconds}s for HC-SR501 to stabilize...")
+        try:
+            from gpiozero import DigitalInputDevice
+            self.device = DigitalInputDevice(self.pin, pull_up=False)
+            self.backend = "gpiozero"
+        except Exception:
+            if RPI_GPIO_AVAILABLE:
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(self.pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                self.backend = "RPi.GPIO"
+            else:
+                self.backend = "mock"
+
+        print(f"[PIR] Waiting {self.warmup_seconds}s for sensor to stabilize...")
         time.sleep(self.warmup_seconds)
         self.initialized = True
-        print("[PIR] HC-SR501 sensor stabilized and armed.")
+        print("[PIR] HC-SR501 armed and ready.")
 
     def read(self):
-        """Returns True if motion is currently detected (HIGH), False otherwise."""
+        """Returns True if pin is HIGH (1), False otherwise."""
         if not self.initialized:
             self.initialize()
 
-        if not RPI_GPIO_AVAILABLE:
-            return False
-
-        return GPIO.input(self.pin) == GPIO.HIGH
+        if self.backend == "gpiozero" and self.device:
+            return int(self.device.value) == 1
+        elif self.backend == "RPi.GPIO" and RPI_GPIO_AVAILABLE:
+            return GPIO.input(self.pin) == GPIO.HIGH
+        return False
 
     def wait_for_motion(self, poll_interval=0.1):
         """
-        Polls until motion is detected (pin is HIGH).
-        Returns timestamp of the trigger event.
+        Blocks until motion is detected (pin reads HIGH).
+        Returns the timestamp of the trigger event.
         """
         if not self.initialized:
             self.initialize()
 
-        # Wait until pin reads HIGH
         while not self.read():
             time.sleep(poll_interval)
 
         return time.time()
 
-    def wait_for_clear(self, timeout=PIR_COOLDOWN_SECONDS, poll_interval=0.2):
+    def wait_for_clear(self, timeout=None, poll_interval=0.2):
         """
-        Applies a strict cooldown (default 5.0 seconds).
-        Does not hang if the hardware pin takes longer to clear.
+        Waits until there has been no motion for timeout_seconds.
         """
-        start = time.time()
-        while time.time() - start < timeout:
-            time.sleep(poll_interval)
+        if timeout is None:
+            timeout = self.timeout_seconds
 
+        last_motion = time.time()
+        while True:
+            if self.read():
+                last_motion = time.time()
+            elif time.time() - last_motion >= timeout:
+                break
+            time.sleep(poll_interval)
 
     def cleanup(self):
         """Cleans up GPIO settings."""
+        if self.device:
+            try:
+                self.device.close()
+            except Exception:
+                pass
+            self.device = None
+
         if RPI_GPIO_AVAILABLE:
             try:
                 GPIO.cleanup(self.pin)
             except Exception:
                 pass
+
         self.initialized = False
         print("[PIR] GPIO cleaned up.")
 
@@ -97,20 +126,3 @@ def wait_for_pir_clear():
 
 def cleanup_pir():
     pir_sensor.cleanup()
-
-
-if __name__ == "__main__":
-    print("=== Standalone PIR Test ===")
-    try:
-        initialize_pir()
-        print("Monitoring for motion... (Ctrl+C to quit)")
-        while True:
-            t = wait_for_pir_motion()
-            print(f"[TRIGGER] Motion detected at {time.strftime('%H:%M:%S', time.localtime(t))}")
-            wait_for_pir_clear()
-            print("[READY] Sensor cleared and re-armed.")
-            time.sleep(PIR_COOLDOWN_SECONDS)
-    except KeyboardInterrupt:
-        print("\nExiting PIR test...")
-    finally:
-        cleanup_pir()
