@@ -1,6 +1,9 @@
 import tensorflow as tf
 from pathlib import Path
-from Training.config import *
+try:
+    from src.Training.config import *
+except ModuleNotFoundError:
+    from Training.config import *
 
 # ==========================================================
 # Load Keras Model
@@ -28,6 +31,7 @@ print("Converting to TensorFlow Lite...")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
 
 tflite_model = converter.convert()
 

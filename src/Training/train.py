@@ -1,8 +1,13 @@
 import tensorflow as tf
 
-from Training.dataset import load_dataset
-from Training.model import build_model
-from Training.config import *
+try:
+    from src.Training.dataset import load_dataset
+    from src.Training.model import build_model
+    from src.Training.config import *
+except ModuleNotFoundError:
+    from Training.dataset import load_dataset
+    from Training.model import build_model
+    from Training.config import *
 
 # ============================================================
 # Load Dataset
@@ -97,6 +102,26 @@ callbacks = [
 ]
 
 # ============================================================
+# Balanced Class Weights
+# ============================================================
+
+train_dir = DATASET_DIR / "train"
+class_names = sorted([d.name for d in train_dir.iterdir() if d.is_dir()])
+class_counts = {}
+total_train = 0
+for i, c_name in enumerate(class_names):
+    count = len(list((train_dir / c_name).glob("*.*")))
+    class_counts[i] = count
+    total_train += count
+
+class_weights = {}
+for i, count in class_counts.items():
+    class_weights[i] = total_train / (len(class_names) * max(count, 1))
+
+print(f"[TRAIN] Class counts: {{class_names[i]: class_counts[i] for i in class_counts}}")
+print(f"[TRAIN] Balanced class weights: {{class_names[i]: round(class_weights[i], 3) for i in class_weights}}")
+
+# ============================================================
 # Train
 # ============================================================
 
@@ -109,6 +134,8 @@ history = model.fit(
     epochs=EPOCHS,
 
     callbacks=callbacks,
+
+    class_weight=class_weights,
 
     verbose=1
 

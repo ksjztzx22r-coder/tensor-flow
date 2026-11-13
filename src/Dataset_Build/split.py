@@ -3,7 +3,10 @@ import shutil
 
 from pathlib import Path
 
-from Dataset_Build.dataset_builder_config import *
+try:
+    from src.Dataset_Build.dataset_builder_config import *
+except ModuleNotFoundError:
+    from Dataset_Build.dataset_builder_config import *
 
 random.seed(RANDOM_SEED)
 
@@ -33,7 +36,12 @@ def clear_directory(folder):
 
 def split_class(class_name):
 
-    source = RAW_DATASET_DIR / class_name
+    # Prefer DATASET_DIR / class_name (where user uploads large curated datasets), fallback to RAW_DATASET_DIR
+    dataset_class_dir = DATASET_DIR / class_name
+    if dataset_class_dir.exists() and any(dataset_class_dir.iterdir()):
+        source = dataset_class_dir
+    else:
+        source = RAW_DATASET_DIR / class_name
 
     train_folder = TRAIN_DIR / class_name
 

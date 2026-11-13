@@ -26,8 +26,11 @@ AUDIO_FILES = {
     "monkey": str(MONKEY_AUDIO),
 }
 
-# Check if native Linux ALSA aplay is available
+# Check audio binaries available on Linux / Raspberry Pi OS
 APLAY_BIN = shutil.which("aplay")
+PAPLAY_BIN = shutil.which("paplay")
+PWPLAY_BIN = shutil.which("pw-play")
+PACTL_BIN = shutil.which("pactl")
 
 # Check Pygame availability for fallback
 PYGAME_AVAILABLE = False
@@ -37,6 +40,26 @@ try:
     PYGAME_AVAILABLE = True
 except Exception:
     PYGAME_AVAILABLE = False
+
+
+def find_bluetooth_sink():
+    """
+    Scans PulseAudio/PipeWire for connected Bluetooth A2DP audio sinks (e.g. connected laptop/headphones).
+    Returns sink name string or None.
+    """
+    if not PACTL_BIN:
+        return None
+    try:
+        out = subprocess.check_output([PACTL_BIN, "list", "sinks", "short"], stderr=subprocess.DEVNULL).decode("utf-8", errors="ignore")
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                sink_name = parts[1]
+                if "bluez" in sink_name.lower():
+                    return sink_name
+    except Exception:
+        pass
+    return None
 
 
 def find_usb_alsa_device():
@@ -52,9 +75,8 @@ def find_usb_alsa_device():
         # Look for USB card names like "Device", "USB", "Headset", "DAC"
         for line in out.splitlines():
             if "card" in line and ("USB" in line or "Device" in line or "Audio" in line):
-                # Extract card number or name, e.g. "card 1: Device [USB Audio Device]"
                 parts = line.split(":")
-                card_part = parts[0].strip() # "card 1"
+                card_part = parts[0].strip()
                 card_num = card_part.replace("card", "").strip()
                 return f"plughw:{card_num},0"
     except Exception:
@@ -88,8 +110,32 @@ class AudioPlayer:
             self.current_sound = label
             print(f"[AUDIO] Triggering deterrence audio for '{label}' -> {Path(sound_path).name}")
 
-            # Method 1: Native Linux aplay (Most reliable on Raspberry Pi with USB speakers)
-            if APLAY_BIN:
+            # Check if Bluetooth audio sink (e.g. paired laptop) is active
+            bt_sink = find_bluetooth_sink()
+            if bt_sink:
+                print(f"[AUDIO ROUTE] Bluetooth Sink detected: {bt_sink}")
+                try:
+                    if PAPLAY_BIN:
+                        cmd = [PAPLAY_BIN, "-d", bt_sink, sound_path]
+                    elif PWPLAY_BIN:
+                        cmd = [PWPLAY_BIN, "--target", bt_sink, sound_path]
+                    elif APLAY_BIN:
+                        cmd = [APLAY_BIN, "-D", "pulse", sound_path]
+                    else:
+                        cmd = None
+
+                    if cmd:
+                        self.process = subprocess.Popen(
+                            cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+                except Exception as e:
+                    print(f"[AUDIO WARNING] Bluetooth playback failed ({e}), trying ALSA/Pygame fallback...")
+                    self.process = None
+
+            # Fallback 1: Native Linux aplay with USB speaker / default card
+            if self.process is None and APLAY_BIN:
                 try:
                     cmd = [APLAY_BIN]
                     if self.usb_device and self.usb_device != "default":

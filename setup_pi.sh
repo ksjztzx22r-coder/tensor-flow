@@ -52,23 +52,27 @@ mkdir -p logs/detections
 mkdir -p models
 mkdir -p sounds
 
-echo -e "${GREEN}[5/6] Creating systemd service for standalone auto-start...${NC}"
+echo -e "${GREEN}[5/6] Creating systemd service for standalone auto-start with live console output...${NC}"
 SERVICE_FILE="/etc/systemd/system/wildlife.service"
 
 sudo bash -c "cat <<EOF > $SERVICE_FILE
 [Unit]
 Description=Wildlife Intrusion Detection & Acoustic Deterrence
-After=network.target sound.target
+After=network.target sound.target bluetooth.target
 
 [Service]
 Type=simple
 User=$CURRENT_USER
 WorkingDirectory=$PROJECT_DIR
-ExecStart=/usr/bin/python3 -m src.Rasp_Pi.main
+Environment=\"PYTHONUNBUFFERED=1\"
+ExecStart=/usr/bin/python3 -u -m src.Rasp_Pi.main
 Restart=always
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
+StandardOutput=journal+console
+StandardError=journal+console
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -76,6 +80,7 @@ EOF"
 
 sudo systemctl daemon-reload
 sudo systemctl enable wildlife.service
+chmod +x start.sh live_logs.sh setup_pi.sh 2>/dev/null || true
 echo -e "${GREEN}[INFO] wildlife.service successfully enabled for auto-start on boot.${NC}"
 
 echo -e "${GREEN}[6/6] Hardware smoke tests ready.${NC}"

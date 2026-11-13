@@ -22,6 +22,7 @@ from src.Rasp_Pi.camera import initialize_camera, capture_still, close_camera
 from src.Rasp_Pi.detector import initialize_detector, classify
 from src.Rasp_Pi.audio import play_audio, stop_audio, audio_busy
 from src.Rasp_Pi.logger import log_detection
+from src.Rasp_Pi.web_viewer import start_web_viewer
 
 
 def run_system():
@@ -43,6 +44,9 @@ def run_system():
 
     print("[INIT] Initializing PIR motion sensor...")
     initialize_pir()
+
+    print("[INIT] Starting live image web viewer (port 8080)...")
+    start_web_viewer()
 
     print("=" * 65)
     print("[SYSTEM READY] Standing by for PIR motion triggers...")

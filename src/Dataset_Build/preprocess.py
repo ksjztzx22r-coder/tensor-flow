@@ -1,7 +1,10 @@
 import cv2
 from pathlib import Path
 
-from Dataset_Build.dataset_builder_config import *
+try:
+    from src.Dataset_Build.dataset_builder_config import *
+except ModuleNotFoundError:
+    from Dataset_Build.dataset_builder_config import *
 
 SUPPORTED_EXTENSIONS = [
     ".jpg",

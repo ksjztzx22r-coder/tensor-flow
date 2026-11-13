@@ -49,6 +49,9 @@ class PIRSensor:
         self.device = None
         self.backend = None
         self.initialized = False
+        self.last_trigger_time = 0
+        self.trigger_history = []
+        self.suppressed_until = 0
 
     def initialize(self):
         """Initializes GPIO and performs baseline calibration to guarantee clean NO MOTION state."""
@@ -98,33 +101,73 @@ class PIRSensor:
             return GPIO.input(self.pin) == GPIO.HIGH
         return False
 
+    def _wait_for_quiet_baseline(self, quiet_duration=2.0, poll_interval=0.1):
+        """Ensures the sensor stays steadily LOW for at least quiet_duration seconds."""
+        quiet_start = time.time()
+        while time.time() - quiet_start < quiet_duration:
+            if self.read():
+                quiet_start = time.time()
+            time.sleep(poll_interval)
+
     def wait_for_motion(self, poll_interval=0.05):
         """
         Blocks until a verified rising-edge (0 -> 1) motion event occurs.
+        Respects active hysteresis suppression cooldown and records trigger history.
         Returns the timestamp of the trigger event.
         """
         if not self.initialized:
             self.initialize()
 
-        # Step 1: Ensure pin is LOW (0) before accepting a new trigger
+        # Step 1: Wait out any active hysteresis suppression window
+        now = time.time()
+        if now < self.suppressed_until:
+            remaining = self.suppressed_until - now
+            print(f"[HYSTERESIS] Under suppression cooldown: waiting {remaining:.1f}s before arming...")
+            time.sleep(remaining)
+            self._wait_for_quiet_baseline(quiet_duration=2.0)
+
+        # Step 2: Ensure pin is LOW (0) before accepting a new trigger
         while self.read():
             time.sleep(poll_interval)
 
-        # Step 2: Wait for 0 -> 1 transition with 30ms debounce
+        # Step 3: Wait for 0 -> 1 transition with 30ms debounce
         while True:
             if self.read():
                 time.sleep(0.03)
                 if self.read():
-                    return time.time()
+                    t = time.time()
+                    self.last_trigger_time = t
+                    # Record in rolling 20s trigger window
+                    self.trigger_history = [ts for ts in self.trigger_history if t - ts <= 20.0]
+                    self.trigger_history.append(t)
+                    return t
             time.sleep(poll_interval)
 
     def wait_for_clear(self, poll_interval=0.1):
         """
-        Hysteresis loop after a trigger event:
-        1. If motion clears (pin is 0) and stays 0 for quiet_seconds -> Clean reset to IDLE.
-        2. If motion persists continuously for continuous_max -> Hysteresis activates,
-           PIR is ignored for ignore_interval seconds, then re-arms once sensor drops to 0.
+        Hysteresis loop after a trigger and capture:
+        Checks both physical pin hold duration AND rapid repeated trigger rate.
+        If continuous presence (pin held HIGH) OR rapid repeated triggers (>= 2 within 20s):
+        activates hysteresis suppression to prevent camera/alarm spam!
         """
+        now = time.time()
+        self.trigger_history = [ts for ts in self.trigger_history if now - ts <= 20.0]
+
+        # Condition A: Burst trigger frequency (animal lingering / repeated pulses)
+        if len(self.trigger_history) >= 2:
+            print(
+                f"\n[HYSTERESIS] Rapid repeated triggers ({len(self.trigger_history)} events in <20s)! "
+                f"Suppressing PIR for {self.ignore_interval:.1f}s to prevent spamming..."
+            )
+            self.suppressed_until = time.time() + self.ignore_interval
+            time.sleep(self.ignore_interval)
+            print("[HYSTERESIS] Suppression window ended. Verifying quiet baseline...")
+            self._wait_for_quiet_baseline(quiet_duration=2.0)
+            self.trigger_history.clear()
+            print("[STANDBY] PIR hysteresis cleared & re-armed. Waiting for next motion event...")
+            return
+
+        # Condition B: Continuous pin HIGH hold
         start_tracking = time.time()
         last_high = time.time() if self.read() else None
 
@@ -140,8 +183,9 @@ class PIRSensor:
                 if continuous_duration >= self.continuous_max:
                     print(
                         f"\n[HYSTERESIS] Continuous motion detected (> {self.continuous_max:.1f}s)! "
-                        f"PIR will be IGNORED for {self.ignore_interval:.1f}s..."
+                        f"Suppressing PIR for {self.ignore_interval:.1f}s..."
                     )
+                    self.suppressed_until = time.time() + self.ignore_interval
                     time.sleep(self.ignore_interval)
 
                     # After ignore interval, ensure pin drops to LOW (0) before re-arming
@@ -154,8 +198,8 @@ class PIRSensor:
                             print("[HYSTERESIS WARNING] Sensor pin remained HIGH; forcing re-arm.")
                             break
 
-                    # Require 1 second of confirmed LOW before exiting
-                    time.sleep(1.0)
+                    self._wait_for_quiet_baseline(quiet_duration=2.0)
+                    self.trigger_history.clear()
                     break
             else:
                 # Pin is LOW (0)

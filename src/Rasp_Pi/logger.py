@@ -43,6 +43,9 @@ class DetectionLogger:
         # Convert RGB back to BGR for cv2.imwrite
         frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
         cv2.imwrite(str(filepath), frame_bgr)
+        # Always maintain a fixed copy at logs/latest.jpg for instant verification without browsing folders
+        latest_filepath = LOG_DIR / "latest.jpg"
+        cv2.imwrite(str(latest_filepath), frame_bgr)
         return filepath
 
     def log(self, label, confidence, action="none", inference_time_ms=0.0, frame_rgb=None):
@@ -66,7 +69,24 @@ class DetectionLogger:
                 image_name
             ])
 
+        # Write latest detection metadata for quick CLI and web dashboard access
+        try:
+            import json
+            latest_json = LOG_DIR / "latest.json"
+            with open(latest_json, "w") as jf:
+                json.dump({
+                    "timestamp": timestamp,
+                    "species": label,
+                    "confidence": f"{confidence*100:.1f}%",
+                    "action": action,
+                    "inference_ms": f"{inference_time_ms:.1f}ms",
+                    "image": image_name
+                }, jf, indent=2)
+        except Exception:
+            pass
+
         print(f"[{timestamp}] Logged: {label} ({confidence*100:.1f}%) | Action: {action} | Time: {inference_time_ms:.1f}ms")
+        print(f"       -> Latest image saved to: {LOG_DIR / 'latest.jpg'}")
 
 
 logger = DetectionLogger()

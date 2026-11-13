@@ -1,6 +1,9 @@
 import tensorflow as tf
 
-from Training.config import *
+try:
+    from src.Training.config import *
+except ModuleNotFoundError:
+    from Training.config import *
 
 # ============================================================
 # Data Augmentation
