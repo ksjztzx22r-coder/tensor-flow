@@ -30,7 +30,8 @@ print("Converting to TensorFlow Lite...")
 
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 
-converter.optimizations = [tf.lite.Optimize.DEFAULT]
+# Strictly avoid converter.optimizations = [tf.lite.Optimize.DEFAULT] as it produces
+# FULLY_CONNECTED version 12 opcodes which crash the Pi's tflite-runtime.
 converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
 
 tflite_model = converter.convert()
