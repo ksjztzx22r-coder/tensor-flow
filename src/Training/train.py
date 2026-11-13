@@ -27,9 +27,23 @@ model.summary()
 # Callbacks
 # ============================================================
 
-checkpoint = tf.keras.callbacks.ModelCheckpoint(
+import time
 
-    filepath=CHECKPOINT_PATH,
+class ResilientModelCheckpoint(tf.keras.callbacks.ModelCheckpoint):
+    """Handles transient Windows file locks (Errno 22 / Antivirus indexing) gracefully."""
+    def _save_model(self, epoch, batch, logs):
+        for attempt in range(5):
+            try:
+                super()._save_model(epoch, batch, logs)
+                return
+            except (OSError, PermissionError) as e:
+                time.sleep(0.5)
+                if attempt == 4:
+                    print(f"\n[WARNING] Checkpoint file temporarily locked by Windows: {e}. Skipping epoch save.")
+
+checkpoint = ResilientModelCheckpoint(
+
+    filepath=str(CHECKPOINT_PATH),
 
     monitor="val_accuracy",
 
@@ -147,7 +161,7 @@ history = model.fit(
 
 model.save(
 
-    MODEL_PATH,
+    str(MODEL_PATH),
 
     include_optimizer=True
 
